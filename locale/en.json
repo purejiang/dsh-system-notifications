@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "System Notifications",
+    "description": "Sends a desktop notification when a session waits for approval or finishes. The title names the project, the body names the session, and clicking the notification jumps back to that session."
+  }
+}

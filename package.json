@@ -1,0 +1,53 @@
+{
+  "name": "dsh-system-notifications",
+  "version": "1.1.0",
+  "type": "module",
+  "description": "Desktop notifications for approval requests and finished runs, with click-to-open session.",
+  "license": "MIT",
+  "repository": "https://github.com/purejiang/dsh-system-notifications",
+  "homepage": "https://github.com/purejiang/dsh-system-notifications#readme",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "notifications",
+    "deepseek-harness",
+    "approval"
+  ],
+  "engines": {
+    "dsh": ">=0.2.1-rc.2"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "README.md",
+    "README.zh.md",
+    "LICENSE",
+    "icon.svg",
+    "notification-icon.png",
+    "notification-icon.svg"
+  ],
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-settings-general"
+      ]
+    }
+  }
+}
