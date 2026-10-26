@@ -23,6 +23,8 @@ window.__ModuleLoader__.load({
     const NS = 'system-notifications';
     /** localStorage key for the user preference (per browser profile). */
     const ENABLED_KEY = 'dsh.system-notifications.enabled';
+    /** localStorage key for the "persistent" preference: keep notifications on screen. */
+    const PERSISTENT_KEY = 'dsh.system-notifications.persistent';
     /** Marks that this browser was already asked once, so a dismissed prompt does not nag. */
     const PERMISSION_ASKED_KEY = 'dsh.system-notifications.permission-asked';
     /** Cap the action-center entries this page keeps alive. */
@@ -44,6 +46,8 @@ window.__ModuleLoader__.load({
       'settings.unsupported': '当前环境不支持系统通知。',
       'settings.open': '授权',
       'settings.test': '测试通知',
+      'settings.persistent.label': '常驻通知',
+      'settings.persistent.description': '通知不会自动收起，直到你点击或手动关闭；关闭时按系统默认时长消失。',
       'notify.test.title': '系统通知已就绪',
       'notify.test.body': '点击这条通知即可跳转到对应会话。',
       'notify.approval.title': '需要你的审批',
@@ -75,6 +79,8 @@ window.__ModuleLoader__.load({
       'settings.unsupported': 'System notifications are unavailable in this environment.',
       'settings.open': 'Authorize',
       'settings.test': 'Test',
+      'settings.persistent.label': 'Persistent notifications',
+      'settings.persistent.description': 'Keep notifications on screen until you click or dismiss them. Off uses the system default timeout.',
       'notify.test.title': 'Notifications are ready',
       'notify.test.body': 'Click this notification to open the session.',
       'notify.approval.title': 'Approval needed',
@@ -209,6 +215,27 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /**
+     * Persistent notifications stay on screen until the user acts on them.
+     * Off by default: it changes how the OS treats every notification this
+     * plugin raises, so it is an explicit opt-in.
+     */
+    function readPersistent() {
+      try {
+        return globalThis.localStorage.getItem(PERSISTENT_KEY) === '1';
+      } catch {
+        return false;
+      }
+    }
+
+    function writePersistent(value) {
+      try {
+        globalThis.localStorage.setItem(PERSISTENT_KEY, value ? '1' : '0');
+      } catch {
+        // A browser that refuses storage still keeps the in-memory preference.
+      }
+    }
+
     return {
       inject: ['slots', 'locale'],
 
@@ -218,33 +245,45 @@ window.__ModuleLoader__.load({
         installSettingsStyles();
 
         let enabled = readEnabled();
+        let persistent = readPersistent();
         let visibleSessionId;
         let latestSessions;
         let latestWorkspaces;
         let latestPanelInfo;
         let disposed = false;
-        const enabledListeners = new Set();
+        const preferenceListeners = new Set();
         const liveNotifications = new Set();
         /** Start time of the currently running interval, per Session. */
         const runningSince = new Map();
 
-        function subscribeEnabled(listener) {
-          enabledListeners.add(listener);
+        function subscribePreferences(listener) {
+          preferenceListeners.add(listener);
           return () => {
-            enabledListeners.delete(listener);
+            preferenceListeners.delete(listener);
           };
         }
 
-        function setEnabled(value) {
-          enabled = value;
-          writeEnabled(value);
-          for (const listener of [...enabledListeners]) {
+        /** Tell both settings rows that a stored preference changed. */
+        function notifyPreferencesChanged() {
+          for (const listener of [...preferenceListeners]) {
             try {
               listener();
             } catch (error) {
               console.error('system-notifications: listener failed', error);
             }
           }
+        }
+
+        function setEnabled(value) {
+          enabled = value;
+          writeEnabled(value);
+          notifyPreferencesChanged();
+        }
+
+        function setPersistent(value) {
+          persistent = value;
+          writePersistent(value);
+          notifyPreferencesChanged();
         }
 
         function canNotify() {
@@ -330,6 +369,10 @@ window.__ModuleLoader__.load({
               tag: spec.tag,
               icon: NOTIFICATION_ICON,
               silent: false,
+              // Ask the OS to keep the toast up until the user acts on it. The
+              // browser/OS may still downgrade this (e.g. route it to the
+              // notification center), so it is best-effort by design.
+              requireInteraction: persistent,
             });
           } catch (error) {
             console.error('system-notifications: creating a Notification failed', error);
@@ -636,6 +679,42 @@ window.__ModuleLoader__.load({
           return null;
         }
 
+        /**
+         * A settings switch rendered with the host's primitive when available,
+         * falling back to a hand-drawn one on a foreign shell. Returns null when
+         * the browser cannot raise notifications at all.
+         */
+        function switchControl(key, checked, labelText, onChange) {
+          if (!supportsNotifications()) return null;
+          if (HostSwitch) {
+            return h(HostSwitch, { key, checked, label: labelText, onChange });
+          }
+          return h(
+            'button',
+            {
+              key,
+              type: 'button',
+              role: 'switch',
+              'aria-checked': checked,
+              'aria-label': labelText,
+              style: {
+                ...fallbackStyles.switchTrack,
+                background: checked
+                  ? 'var(--dsw-alias-brand-primary)'
+                  : 'var(--dsw-alias-bg-layer-2)',
+                boxShadow: 'inset 0 0 0 1px var(--dsw-alias-border-l1)',
+              },
+              onClick: onChange,
+            },
+            h('span', {
+              style: {
+                ...fallbackStyles.switchKnob,
+                transform: checked ? 'translateX(16px)' : 'translateX(0)',
+              },
+            }),
+          );
+        }
+
         /** One General-settings row: authorization, on/off preference, and a test notification. */
         function SettingsRow(props) {
           const sessions = props.useSessions ? props.useSessions((state) => state) : undefined;
@@ -648,7 +727,7 @@ window.__ModuleLoader__.load({
 
           React.useEffect(
             () =>
-              subscribeEnabled(() => {
+              subscribePreferences(() => {
                 setPermission(currentPermission());
                 bump();
               }),
@@ -752,39 +831,7 @@ window.__ModuleLoader__.load({
             actions.push(actionButton('test', t('settings.test'), sendTest));
           }
 
-          const switchNode = supported
-            ? HostSwitch
-              ? h(HostSwitch, {
-                  key: 'switch',
-                  checked: enabled,
-                  label: t('settings.label'),
-                  onChange: toggle,
-                })
-              : h(
-                  'button',
-                  {
-                    key: 'switch',
-                    type: 'button',
-                    role: 'switch',
-                    'aria-checked': enabled,
-                    'aria-label': t('settings.label'),
-                    style: {
-                      ...fallbackStyles.switchTrack,
-                      background: enabled
-                        ? 'var(--dsw-alias-brand-primary)'
-                        : 'var(--dsw-alias-bg-layer-2)',
-                      boxShadow: 'inset 0 0 0 1px var(--dsw-alias-border-l1)',
-                    },
-                    onClick: toggle,
-                  },
-                  h('span', {
-                    style: {
-                      ...fallbackStyles.switchKnob,
-                      transform: enabled ? 'translateX(16px)' : 'translateX(0)',
-                    },
-                  }),
-                )
-            : null;
+          const switchNode = switchControl('switch', enabled, t('settings.label'), toggle);
           if (switchNode) actions.push(switchNode);
 
           return h(
@@ -800,6 +847,36 @@ window.__ModuleLoader__.load({
           );
         }
 
+        /**
+         * Second General-settings row: keep notifications on screen until the
+         * user acts on them. It sits next to the main row instead of inside it,
+         * so each switch keeps a single label and the native row layout.
+         */
+        function PersistentRow() {
+          const [, bump] = React.useReducer((value) => value + 1, 0);
+          React.useEffect(() => subscribePreferences(() => bump()), []);
+
+          if (!supportsNotifications()) return null;
+
+          const control = switchControl(
+            'persistent',
+            persistent,
+            t('settings.persistent.label'),
+            () => setPersistent(!persistent),
+          );
+          return h(
+            'div',
+            { className: 'dsn-row' },
+            h(
+              'div',
+              { className: 'dsn-main' },
+              h('div', { className: 'dsn-title' }, t('settings.persistent.label')),
+              h('div', { className: 'dsn-desc' }, t('settings.persistent.description')),
+            ),
+            h('div', { className: 'dsn-actions' }, control ? [control] : []),
+          );
+        }
+
         ctx.effect(
           () => () => {
             disposed = true;
@@ -811,7 +888,7 @@ window.__ModuleLoader__.load({
               }
             }
             liveNotifications.clear();
-            enabledListeners.clear();
+            preferenceListeners.clear();
           },
           'system-notifications: dispose',
         );
@@ -849,6 +926,18 @@ window.__ModuleLoader__.load({
               locale: NS,
             },
             SettingsRow,
+          ),
+        );
+
+        ctx.slots.inject('settings.general.item', () =>
+          ctx.slots.register(
+            {
+              name: 'settings.general.item',
+              id: 'system-notifications.persistent',
+              order: 26,
+              locale: NS,
+            },
+            PersistentRow,
           ),
         );
 

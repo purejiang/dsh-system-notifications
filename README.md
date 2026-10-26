@@ -11,6 +11,9 @@ notification when a session needs you, and jumps back to that session when you c
 Notifications are edge-triggered: the first snapshot after page load is taken as the baseline,
 so a refresh never floods you with a backlog.
 
+> Version 1.2.0 — a second General row, **Persistent notifications**, asks the OS to keep a
+> notification on screen until you click or dismiss it (Web Notification `requireInteraction`).
+>
 > Version 1.1.0 — notification titles name the **project** (`Project · Event`,
 > e.g. `harness-plugins · Approval required`), and the body names the session.
 
@@ -42,7 +45,10 @@ and `client.js` (the whole feature). Refreshing the page after install is enough
    keypress** after the page loads; you can also use the **Authorize** button in the same row.
    If you dismissed or denied the prompt, allow `http://127.0.0.1:3080` in
    `chrome://settings/content/notifications` (or the site icon in the address bar) and retry.
-3. The **Test notification** button is hidden in the shipped UI. To use it, double-click the
+3. Optional: turn on the second row, **Persistent notifications**, to keep each notification on
+   screen until you click or dismiss it. It is off by default; Windows may still route the toast
+   to the notification center instead of leaving it on top.
+4. The **Test notification** button is hidden in the shipped UI. To use it, double-click the
    row title “System Notifications” (stored per session in `sessionStorage`), or open the page
    with `?dshNotificationTest=1`.
 
@@ -62,13 +68,15 @@ and `client.js` (the whole feature). Refreshing the page after install is enough
   and the window has focus.
 - **No noise:** subagent sessions are skipped, duplicate notifications collapse per session
   (`tag`), and at most 6 notifications are kept open.
+- **Persistent mode (optional):** when enabled, notifications set `requireInteraction` so the OS
+  keeps the toast up until the user acts on it, instead of hiding it after the default timeout.
 
-## Settings row
+## Settings rows
 
-The row is built from the host's own primitives (`Switch`/`Button` from
-`@deepseek-ai/dsh-client-ui-primitives`), so its spacing and type match the built-in settings
-rows. It shows the current state and explains why notifications are off when the browser
-permission is denied.
+Both rows are built from the host's own primitives (`Switch`/`Button` from
+`@deepseek-ai/dsh-client-ui-primitives`), so their spacing and type match the built-in settings
+rows. The main row shows the current state and explains why notifications are off when the
+browser permission is denied; the second row controls persistent notifications.
 
 ## How it works
 
@@ -94,7 +102,7 @@ otherwise coalesce a short run into no visible change.
 package.json          # dsh.bundle + dsh.client declarations
 cordis.patch.yml      # inserts the bundle row
 index.js              # host half: registers the bundle, no logic
-client.js             # observer, project-name resolution, session tracker, settings row
+client.js             # observer, project-name resolution, session tracker, settings rows
 locale/en.json        # plugin list title/description (English)
 locale/zh.json        # plugin list title/description (Chinese)
 icon.svg              # plugin list / settings row icon
@@ -111,6 +119,8 @@ notification-icon.svg # vector source of the notification icon
 - Notification titles are truncated by the OS; the project name is placed first so it stays
   visible.
 - If the browser permission is denied, nothing is sent and the settings row states the reason.
+- Persistent mode is best-effort: some platforms ignore `requireInteraction` and fall back to
+  the normal notification timeout.
 
 ## License
 

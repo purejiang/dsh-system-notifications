@@ -11,6 +11,9 @@
 
 只在状态**发生跃迁**时通知；页面加载后的首帧快照作为基线，刷新不会补发历史通知。
 
+> v1.2.0：新增第二行设置「常驻通知」，开启后会给通知带上
+> `requireInteraction`，让系统尽量不自动收起通知，直到你点击或手动关闭。
+>
 > v1.1.0：通知标题带项目名，形如 `项目名 · 事件`（如 `harness-plugins · 需要你的审批`），
 > 正文仍是 `「会话名」…`。
 
@@ -39,7 +42,9 @@ dsh plugin --profile web add github:purejiang/dsh-system-notifications
 2. 授权浏览器通知权限。插件会在页面加载后的**第一次点击/按键**时自动请求一次；也可以直接点
    行内的「授权」。如果之前误点了拒绝，去 `chrome://settings/content/notifications` 把
    `http://127.0.0.1:3080` 改为允许，或点地址栏左侧站点图标 → 网站设置 → 通知 → 允许。
-3. **「测试通知」按钮默认隐藏**。需要测试时，在设置行**双击标题「系统通知」**（会话级，
+3. 可选：打开设置里的第二行 **常驻通知**，通知会尽量一直留在屏幕上，直到你点击或手动关闭。
+   默认关闭；Windows 仍可能把 toast 收进通知中心而不是一直浮在最上层。
+4. **「测试通知」按钮默认隐藏**。需要测试时，在设置行**双击标题「系统通知」**（会话级，
    记在 `sessionStorage`），或用 `?dshNotificationTest=1` 打开页面。
 
 ## 行为
@@ -53,11 +58,12 @@ dsh plugin --profile web add github:purejiang/dsh-system-notifications
 - **不打扰**：你正在看该会话（对话面板可见且窗口有焦点）时不通知。
 - **降噪**：子会话（subagent）不通知；同一会话按 `tag` 去重；最多同时保留 6 条。
 - **点击**：聚焦窗口并通过 `openSession` 直接切到该会话。
+- **常驻（可选）**：开启后通知带 `requireInteraction`，系统会把 toast 留到你操作而不是按默认时长收起。
 
 ## 设置行
 
-设置行使用宿主自带的 primitives（`Switch` / `Button`），行距、字号与系统行一致。
-浏览器权限被拒绝时会显示原因。
+两行设置都使用宿主自带的 primitives（`Switch` / `Button`），行距、字号与系统行一致。
+第一行显示当前状态、授权/测试入口，浏览器权限被拒绝时会显示原因；第二行是「常驻通知」开关。
 
 ## 实现方式
 
@@ -82,7 +88,7 @@ dsh plugin --profile web add github:purejiang/dsh-system-notifications
 package.json          # dsh.bundle + dsh.client 声明
 cordis.patch.yml      # 插入 bundle 行
 index.js              # Host 半：仅注册 bundle
-client.js             # 观察器、项目名解析、会话跟踪、设置行
+client.js             # 观察器、项目名解析、会话跟踪、设置行（含常驻开关）
 locale/en.json        # 插件列表标题/描述（英文）
 locale/zh.json        # 插件列表标题/描述（中文）
 icon.svg              # 插件列表/设置行图标
@@ -97,6 +103,7 @@ notification-icon.svg # 通知图标的矢量源
 - 页面刷新后，通知中心里的旧通知点击只会聚焦窗口，可能无法再切会话。
 - 系统会截断过长的通知标题；项目名放在最前面以保证可见。
 - 浏览器权限被拒绝时静默不发，设置行会显示原因。
+- 「常驻通知」是尽力而为：部分系统会忽略 `requireInteraction`，仍按默认时长收起。
 
 ## 许可证
 
